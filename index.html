@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>Kunjungan Sales</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <h2>Form Kunjungan Sales</h2>
+
+  <form id="formKunjungan">
+    <label>Nama:</label>
+    <input type="text" id="nama" required />
+
+    <label>Catatan:</label>
+    <input type="text" id="catatan" required />
+
+    <label>Lokasi (otomatis):</label>
+    <input type="text" id="lokasi" readonly />
+
+    <label>Gambar:</label>
+    <input type="file" id="gambar" accept="image/*" />
+
+    <button type="submit">Tambah Kunjungan</button>
+  </form>
+
+  <h2>Daftar Kunjungan</h2>
+  <table id="tabelKunjungan">
+    <thead>
+      <tr>
+        <th>No</th>
+        <th>Nama</th>
+        <th>Catatan</th>
+        <th>Lokasi</th>
+        <th>Gambar</th>
+        <th>Aksi</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div id="zoomOverlay" class="overlay" onclick="this.style.display='none'">
+    <img id="zoomImage" src="" />
+  </div>
+
+  <script>
+  let db;
+const request = indexedDB.open("KunjunganDB", 1);
+
+request.onerror = (e) => console.error("DB gagal dibuka", e);
+request.onsuccess = (e) => {
+  db = e.target.result;
+  tampilkanData();
+};
+request.onupgradeneeded = (e) => {
+  db = e.target.result;
+  db.createObjectStore("kunjungan", { keyPath: "id", autoIncrement: true });
+};
+
+document.getElementById("formKunjungan").addEventListener("submit", function (e) {
+  e.preventDefault();
+  const nama = document.getElementById("nama").value;
+  const catatan = document.getElementById("catatan").value;
+  const lokasi = document.getElementById("lokasi").value;
+  const fileInput = document.getElementById("gambar");
+  const file = fileInput.files[0];
+
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = function (event) {
+      const gambarData = event.target.result;
+      simpanKeDB(nama, catatan, lokasi, gambarData);
+    };
+    reader.readAsDataURL(file);
+  } else {
+    simpanKeDB(nama, catatan, lokasi, "");
+  }
+});
+
+function simpanKeDB(nama, catatan, lokasi, gambarData) {
+  const tx = db.transaction("kunjungan", "readwrite");
+  const store = tx.objectStore("kunjungan");
+  const request = store.add({ nama, catatan, lokasi, gambarData });
+
+  request.onsuccess = () => {
+    console.log("Data berhasil disimpan");
+    tampilkanData();
+    document.getElementById("formKunjungan").reset();
+  };
+  request.onerror = (e) => {
+    console.error("Gagal menyimpan data", e);
+    alert("Gagal menyimpan data. Coba refresh halaman.");
+  };
+}
+
+function tampilkanData() {
+  const tbody = document.querySelector("#tabelKunjungan tbody");
+  tbody.innerHTML = "";
+  const tx = db.transaction("kunjungan", "readonly");
+  const store = tx.objectStore("kunjungan");
+  let no = 1;
+
+  store.openCursor().onsuccess = function (e) {
+    const cursor = e.target.result;
+    if (cursor) {
+      const { id, nama, catatan, lokasi, gambarData } = cursor.value;
+      const tr = document.createElement("tr");
+
+      tr.innerHTML = `
+        <td>${no++}</td>
+        <td>${nama}</td>
+        <td>${catatan}</td>
+        <td>${lokasi}</td>
+        <td>
+          ${gambarData
+            ? `<img src="${gambarData}" width="80" style="cursor:pointer" onclick="zoomGambar('${gambarData}')"/>`
+            : "Tidak ada"}
+        </td>
+        <td><button onclick="hapusData(${id})">Hapus</button></td>
+      `;
+      tbody.appendChild(tr);
+      cursor.continue();
+    }
+  };
+}
+
+function hapusData(id) {
+  const tx = db.transaction("kunjungan", "readwrite");
+  tx.objectStore("kunjungan").delete(id);
+  tx.oncomplete = tampilkanData;
+}
+
+function zoomGambar(src) {
+  const overlay = document.getElementById("zoomOverlay");
+  const img = document.getElementById("zoomImage");
+  img.src = src;
+  overlay.style.display = "block";
+}
+
+// Lokasi otomatis
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition((pos) => {
+    const coords = pos.coords;
+    document.getElementById("lokasi").value = `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`;
+  });
+}
+  </script>
+</body>
+</html>
